@@ -879,17 +879,25 @@ async function processImage(file, b) {
       headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
       body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:2000,messages:[{role:"user",content:[
         {type:"image",source:{type:"base64",media_type:file.type,data:base64}},
-        {type:"text",text:`Dit is een Picnic boodschappenmandje screenshot. Lees ALLE producten uit en geef ze terug als JSON array.
+        {type:"text",text:`Dit is een screenshot van een Picnic boodschappenmandje. Jouw taak: lees ELKE productregel uit en geef ze terug als JSON array in EXACT DEZELFDE VOLGORDE als op de screenshot.
 
-Formaat: [{"naam": "productnaam", "prijs": 0.00, "categorie": "..."}]
+BELANGRIJK: neem ALLE producten mee, sla er geen over.
 
-Categorie regels:
-- "Ontbijt": brood, beleg, kaas, vleeswaren, eieren, yoghurt, skyr, granola, fruit, boter, jam, pindakaas, hagelslag, honing
-- "Lunch": soep, zalm, avocado, rucola, tomaten, komkommer, hummus, mini broodjes, Philadelphia, smeerkaas, wraps
-- "Beide": knäckebröd/crackers (ook als snack tussendoor)
-- "Hunter": melk, cola, vuilniszakken, chips, borrelhapjes, alcohol, schoonmaak, huishoud, peper, zout, frisdrank
+Formaat per product: {"naam": "exacte productnaam zoals op screenshot", "prijs": 0.00, "categorie": "..."}
 
-Gebruik de TOTAALPRIJS per regel (dus aantal × stuksprijs). Regels zoals "3 × €4,95 = €14,85" → prijs is 14.85. Bij BundelBonus gebruik ALTIJD de rode kortingsprijs, niet de doorgestreepte prijs. Kijk goed naar het getal rechts op elke rij — dat is de totaalprijs voor die regel. Geef ALLEEN de JSON array terug, geen uitleg of tekst eromheen.`}
+Prijs bepalen:
+- Gebruik het getal RECHTS op elke productregel — dat is de totaalprijs voor die regel
+- Als er een aantal staat (bijv. "3" links) dan is de prijs al het totaal (aantal × stuksprijs)
+- Bij BundelBonus: gebruik de rode/gekleurde kortingsprijs, NIET de doorgestreepte originele prijs
+- Prijzen staan in euro's met komma of punt als decimaalteken
+
+Categorie bepalen:
+- "Ontbijt": brood, vloerbrood, beleg, kaas, vleeswaren, eieren, yoghurt, skyr, granola, muesli, fruit, diepvriesfruit, boter, jam, pindakaas, hagelslag, honing, kwark
+- "Lunch": soep, zalm, avocado, rucola, tomaten, komkommer, hummus, mini broodjes, Philadelphia, smeerkaas, hüttenkäse, wraps, salade
+- "Beide": knäckebröd, crackers (worden ook als snack gegeten)
+- "Hunter": melk, cola, fris, water, vuilniszakken, chips, noten, borrelhapjes, alcohol, bier, wijn, schoonmaak, huishoudproducten, peper, zout, koffie, thee
+
+Geef ALLEEN de JSON array terug, geen tekst of uitleg eromheen. Begin direct met [.`}
       ]}]})
     });
     if(!resp.ok) {
