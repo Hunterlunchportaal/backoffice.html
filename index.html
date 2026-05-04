@@ -658,7 +658,34 @@ function addItem(b) { getMandje(weekOffset)[b===1?"b1":"b2"].push({name:"",prijs
 function addHunterDefaults(b) { const a=getMandje(weekOffset)[b===1?"b1":"b2"]; HUNTER_DEFAULTS.forEach(n=>{if(!a.find(i=>i.name===n))a.push({name:n,prijs:0,cat:"Hunter"});}); renderMandjeItems(); }
 function loadVasteProducten(b) { const a=getMandje(weekOffset)[b===1?"b1":"b2"]; vasteProducten.filter(p=>p.bestelling===b||p.bestelling===0).forEach(p=>{if(!a.find(i=>i.name===p.naam))a.push({name:p.naam,prijs:0,cat:p.categorie});}); renderMandjeItems(); }
 function removeItem(b,idx) { getMandje(weekOffset)[b===1?"b1":"b2"].splice(idx,1); renderMandjeItems(); }
-function updateItem(b,idx,field,val) { const a=getMandje(weekOffset)[b===1?"b1":"b2"]; a[idx][field]=field==="prijs"?(parseFloat(val)||0):val; renderMandjeItems(); }
+
+function updateItem(b,idx,field,val) {
+  const a=getMandje(weekOffset)[b===1?"b1":"b2"];
+  a[idx][field]=field==="prijs"?(parseFloat(val)||0):val;
+  if(field==="cat"&&a[idx].name) saveCatVoorkeur(a[idx].name,val);
+  updateTotals(b);
+}
+
+function updateTotals(b) {
+  const arr=getMandje(weekOffset)[b===1?"b1":"b2"];
+  const tot=mandjeTotal(arr,false),med=mandjeTotal(arr,true),hun=tot-med;
+  document.getElementById("b"+b+"-tot").textContent=fmt(tot);
+  document.getElementById("b"+b+"-med").textContent=fmt(med);
+  document.getElementById("b"+b+"-hun").textContent=fmt(hun);
+  document.getElementById("b"+b+"-badge").textContent=fmt(tot);
+}
+
+function getCatVoorkeuren() {
+  try{return JSON.parse(localStorage.getItem("hunter_cat_voorkeuren")||"{}");}catch(e){return {};}
+}
+function saveCatVoorkeur(naam,cat) {
+  const v=getCatVoorkeuren();v[naam.toLowerCase().trim()]=cat;
+  localStorage.setItem("hunter_cat_voorkeuren",JSON.stringify(v));
+}
+function getCatVoorNaam(naam) {
+  const v=getCatVoorkeuren();return v[(naam||"").toLowerCase().trim()]||null;
+}
+
 function mandjeTotal(items,medOnly) { return items.reduce((s,i)=>s+(medOnly&&i.cat==="Hunter"?0:i.prijs),0); }
 
 function renderMandjeItems() {
@@ -862,7 +889,7 @@ Categorie regels:
 - "Beide": knäckebröd/crackers (ook als snack tussendoor)
 - "Hunter": melk, cola, vuilniszakken, chips, borrelhapjes, alcohol, schoonmaak, huishoud, peper, zout, frisdrank
 
-Gebruik de TOTAALPRIJS per regel (dus aantal × stuksprijs). Bij BundelBonus gebruik de kortingsprijs. Geef ALLEEN de JSON array terug, geen uitleg.`}
+Gebruik de TOTAALPRIJS per regel (dus aantal × stuksprijs). Regels zoals "3 × €4,95 = €14,85" → prijs is 14.85. Bij BundelBonus gebruik ALTIJD de rode kortingsprijs, niet de doorgestreepte prijs. Kijk goed naar het getal rechts op elke rij — dat is de totaalprijs voor die regel. Geef ALLEEN de JSON array terug, geen uitleg of tekst eromheen.`}
       ]}]})
     });
     if(!resp.ok) {
@@ -890,9 +917,11 @@ Gebruik de TOTAALPRIJS per regel (dus aantal × stuksprijs). Bij BundelBonus geb
     let added=0;
     items.forEach(item=>{
       if(item.naam){
+        const voorkeur=getCatVoorNaam(item.naam);
+        const cat=voorkeur||(item.categorie||"Ontbijt");
         const existing=arr.find(i=>i.name===item.naam);
-        if(existing){existing.prijs=parseFloat(item.prijs)||0;existing.cat=item.categorie||existing.cat;}
-        else{arr.push({name:item.naam,prijs:parseFloat(item.prijs)||0,cat:item.categorie||"Ontbijt"});added++;}
+        if(existing){existing.prijs=parseFloat(item.prijs)||0;existing.cat=cat;}
+        else{arr.push({name:item.naam,prijs:parseFloat(item.prijs)||0,cat:cat});added++;}
       }
     });
     renderMandjeItems();
