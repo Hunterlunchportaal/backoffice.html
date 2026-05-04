@@ -285,7 +285,7 @@ input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner
           <div style="font-size:1.6rem;margin-bottom:4px">📷</div>
           <strong style="font-size:0.9rem">Sleep of klik — Picnic screenshot bestelling 1</strong>
           <p>Claude leest alle producten, aantallen en prijzen automatisch uit</p>
-          <input type="file" id="file-input-1" accept="image/*" onchange="handleFileUpload(event,1)">
+          <input type="file" id="file-input-1" accept="image/*" multiple onchange="handleFileUpload(event,1)">
         </div>
         <div id="ai-status-1"></div>
       </div>
@@ -301,7 +301,7 @@ input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner
           <div style="font-size:1.6rem;margin-bottom:4px">📷</div>
           <strong style="font-size:0.9rem">Sleep of klik — Picnic screenshot bestelling 2</strong>
           <p>Claude leest alle producten, aantallen en prijzen automatisch uit</p>
-          <input type="file" id="file-input-2" accept="image/*" onchange="handleFileUpload(event,2)">
+          <input type="file" id="file-input-2" accept="image/*" multiple onchange="handleFileUpload(event,2)">
         </div>
         <div id="ai-status-2"></div>
       </div>
@@ -837,8 +837,8 @@ function updateApiStatus(){
 function closeModal(id){document.getElementById(id).style.display="none";}
 
 // ── SCREENSHOT ────────────────────────────────────────────
-function handleDrop(e,b){e.preventDefault();document.getElementById("upload-zone-"+b).classList.remove("drag");const f=e.dataTransfer.files[0];if(f&&f.type.startsWith("image/"))processImage(f,b);}
-function handleFileUpload(e,b){const f=e.target.files[0];if(f)processImage(f,b);e.target.value="";}
+function handleDrop(e,b){e.preventDefault();document.getElementById("upload-zone-"+b).classList.remove("drag");Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/")).forEach(f=>processImage(f,b));}
+function handleFileUpload(e,b){const files=Array.from(e.target.files);files.forEach(f=>processImage(f,b));e.target.value="";}
 
 async function processImage(file, b) {
   const apiKey=getApiKey();
@@ -850,7 +850,7 @@ async function processImage(file, b) {
     const resp=await fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:[
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:2000,messages:[{role:"user",content:[
         {type:"image",source:{type:"base64",media_type:file.type,data:base64}},
         {type:"text",text:`Dit is een Picnic boodschappenmandje screenshot. Lees ALLE producten uit en geef ze terug als JSON array.
 
