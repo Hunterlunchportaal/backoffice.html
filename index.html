@@ -348,8 +348,9 @@ input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner
         <div class="info-row"><span>Hunter deel</span><span id="b2-hun">€0,00</span></div>
       </div>
 
-      <div class="btn-row">
+      <div class="btn-row" style="align-items:center">
         <button class="btn btn-green" onclick="saveMandjeAndCalc()">Opslaan & verrekening berekenen →</button>
+        <span id="autosave-status" style="font-size:0.78rem;color:var(--green);opacity:0;transition:opacity 0.5s">✓ Opgeslagen</span>
       </div>
     </div>
 
@@ -654,16 +655,33 @@ function renderInkoopB(elId, wk, idxs) {
 // ── MANDJE ────────────────────────────────────────────────
 function getMandje(off) { const wk=getWeekKey(off); if(!mandjeCache[wk])mandjeCache[wk]={b1:[],b2:[]}; return mandjeCache[wk]; }
 function getPrevPrice(off,b,name) { const prev=(mandjeCache[getWeekKey(off-1)]||{b1:[],b2:[]})[b===1?"b1":"b2"]||[]; const f=prev.find(i=>i.name===name); return f?f.prijs:null; }
-function addItem(b) { getMandje(weekOffset)[b===1?"b1":"b2"].push({name:"",prijs:0,cat:"Ontbijt"}); renderMandjeItems(); }
+function addItem(b) { getMandje(weekOffset)[b===1?"b1":"b2"].push({name:"",prijs:0,cat:"Ontbijt"}); renderMandjeItems(); clearTimeout(autoSaveTimer);autoSaveTimer=setTimeout(()=>autoSaveMandje(),2000); }
 function addHunterDefaults(b) { const a=getMandje(weekOffset)[b===1?"b1":"b2"]; HUNTER_DEFAULTS.forEach(n=>{if(!a.find(i=>i.name===n))a.push({name:n,prijs:0,cat:"Hunter"});}); renderMandjeItems(); }
 function loadVasteProducten(b) { const a=getMandje(weekOffset)[b===1?"b1":"b2"]; vasteProducten.filter(p=>p.bestelling===b||p.bestelling===0).forEach(p=>{if(!a.find(i=>i.name===p.naam))a.push({name:p.naam,prijs:0,cat:p.categorie});}); renderMandjeItems(); }
-function removeItem(b,idx) { getMandje(weekOffset)[b===1?"b1":"b2"].splice(idx,1); renderMandjeItems(); }
+function removeItem(b,idx) { getMandje(weekOffset)[b===1?"b1":"b2"].splice(idx,1); renderMandjeItems(); clearTimeout(autoSaveTimer);autoSaveTimer=setTimeout(()=>autoSaveMandje(),2000); }
 
+let autoSaveTimer=null;
 function updateItem(b,idx,field,val) {
   const a=getMandje(weekOffset)[b===1?"b1":"b2"];
   a[idx][field]=field==="prijs"?(parseFloat(val)||0):val;
   if(field==="cat"&&a[idx].name) saveCatVoorkeur(a[idx].name,val);
   updateTotals(b);
+  // Auto-save na 2 seconden stilte
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer=setTimeout(()=>autoSaveMandje(), 2000);
+}
+
+async function autoSaveMandje() {
+  const wk=getWeekKey(weekOffset),m=getMandje(weekOffset);
+  const all=[...m.b1.filter(i=>i.name).map(i=>({week_key:wk,bestelling:1,naam:i.name,prijs:i.prijs,categorie:i.cat})),
+             ...m.b2.filter(i=>i.name).map(i=>({week_key:wk,bestelling:2,naam:i.name,prijs:i.prijs,categorie:i.cat}))];
+  try {
+    await sb(`/mandje_items?week_key=eq.${wk}`,{method:"DELETE",prefer:"return=minimal",headers:{"Prefer":"return=minimal"}});
+    if(all.length>0) await sb("/mandje_items",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(all)});
+    // Toon kort bevestiging
+    const el=document.getElementById("autosave-status");
+    if(el){el.textContent="✓ Opgeslagen";el.style.opacity="1";setTimeout(()=>el.style.opacity="0",2000);}
+  } catch(e){console.warn("Auto-save mislukt:",e.message);}
 }
 
 function updateTotals(b) {
