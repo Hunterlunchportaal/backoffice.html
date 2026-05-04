@@ -865,12 +865,27 @@ Categorie regels:
 Gebruik de TOTAALPRIJS per regel (dus aantal × stuksprijs). Bij BundelBonus gebruik de kortingsprijs. Geef ALLEEN de JSON array terug, geen uitleg.`}
       ]}]})
     });
+    if(!resp.ok) {
+      const errText = await resp.text();
+      throw new Error("API fout ("+resp.status+"): " + errText.slice(0,200));
+    }
     const data=await resp.json();
     if(data.error){throw new Error(data.error.message);}
     const text=data.content?.[0]?.text||"";
+    if(!text) throw new Error("Claude gaf een leeg antwoord terug. Probeer opnieuw.");
     let items;
-    try{items=JSON.parse(text.replace(/```json|```/g,"").trim());}
-    catch(e){throw new Error("Kon JSON niet parsen. Probeer een duidelijkere screenshot.");}
+    // Robustly extract JSON array from response
+    try {
+      // First try direct parse after stripping markdown
+      let clean = text.replace(/```json|```/g,"").trim();
+      // Try to find a JSON array anywhere in the response
+      const match = clean.match(/\[[\s\S]*\]/);
+      if (match) clean = match[0];
+      items = JSON.parse(clean);
+    } catch(e) {
+      // Last resort: show the raw response for debugging
+      throw new Error("Kon resultaat niet parsen. Claude antwoordde: " + text.slice(0,300));
+    }
     const m=getMandje(weekOffset),arr=b===1?m.b1:m.b2;
     let added=0;
     items.forEach(item=>{
