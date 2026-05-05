@@ -161,6 +161,22 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 @keyframes spin { to { transform: rotate(360deg); } }
 .hint { font-size: 0.75rem; color: var(--muted); margin-top: 6px; line-height: 1.6; }
 .empty-state { text-align: center; padding: 24px; color: var(--muted); font-size: 0.85rem; }
+/* CHAT */
+.chat-panel { position: fixed; bottom: 0; right: 24px; width: 360px; max-height: 520px; background: white; border-radius: var(--radius) var(--radius) 0 0; box-shadow: 0 -4px 32px rgba(0,0,0,0.12); border: 1px solid var(--border); border-bottom: none; display: none; flex-direction: column; z-index: 200; }
+.chat-panel.open { display: flex; }
+.chat-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--stone); border-radius: var(--radius) var(--radius) 0 0; }
+.chat-header-title { font-weight: 500; font-size: 0.88rem; display: flex; align-items: center; gap: 8px; }
+.chat-close { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 1rem; padding: 0; line-height: 1; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 180px; max-height: 380px; }
+.chat-msg { max-width: 90%; padding: 8px 12px; border-radius: 12px; font-size: 0.84rem; line-height: 1.5; white-space: pre-wrap; }
+.chat-msg.user { background: var(--accent); color: white; align-self: flex-end; border-radius: 12px 12px 3px 12px; }
+.chat-msg.assistant { background: var(--stone); color: var(--text); align-self: flex-start; border-radius: 12px 12px 12px 3px; }
+.chat-msg.thinking { color: var(--muted); font-style: italic; }
+.chat-input-row { padding: 10px 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
+.chat-input { flex: 1; padding: 8px 12px; border-radius: 20px; border: 1px solid var(--border); font-family: var(--font); font-size: 0.84rem; outline: none; background: var(--cream); }
+.chat-input:focus { border-color: var(--accent); }
+.chat-send { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; flex-shrink: 0; }
+.chat-send:hover { background: #3a6f95; }
 input[type=number] { -moz-appearance: textfield; }
 input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 </style>
@@ -222,6 +238,7 @@ input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner
       </div>
       <div class="header-right">
         <span id="api-status" class="api-status api-missing" onclick="document.getElementById('modal-api').style.display='flex'">⚠ API key instellen</span>
+        <button class="btn btn-accent btn-sm" onclick="toggleChat()">💬 Chat</button>
         <button class="btn btn-secondary btn-sm" onclick="refreshAll()">↻</button>
         <button class="btn btn-secondary btn-sm" onclick="doLogout()">Uitloggen</button>
       </div>
@@ -438,6 +455,30 @@ input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- CHAT PANEL -->
+<div class="chat-panel" id="chat-panel">
+  <div class="chat-header">
+    <div class="chat-header-title">
+      <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
+        <circle cx="10" cy="10" r="7" fill="#c8dff5"/>
+        <circle cx="22" cy="10" r="7" fill="#c6ead8"/>
+        <circle cx="10" cy="22" r="7" fill="#c6ead8" opacity="0.7"/>
+        <circle cx="22" cy="22" r="7" fill="#c8dff5" opacity="0.7"/>
+        <circle cx="16" cy="16" r="5" fill="white" opacity="0.85"/>
+      </svg>
+      Chat met Claude
+    </div>
+    <button class="chat-close" onclick="toggleChat()">✕</button>
+  </div>
+  <div class="chat-messages" id="chat-messages">
+    <div class="chat-msg assistant">Hoi! Ik heb toegang tot je mandje en aanmeldingen van deze week. Vraag me gerust iets — bijvoorbeeld "waar mis ik geld?" of "klopt mijn verrekening?"</div>
+  </div>
+  <div class="chat-input-row">
+    <input type="text" class="chat-input" id="chat-input" placeholder="Stel een vraag..." onkeydown="if(event.key==='Enter')sendChat()">
+    <button class="chat-send" onclick="sendChat()">↑</button>
   </div>
 </div>
 
@@ -995,6 +1036,86 @@ async function startApp() {
   try{await loadAll();updateApiStatus();renderWeek();}
   catch(e){alert("Kon data niet laden: "+e.message);}
   hideLoading();
+}
+
+// ── CHAT ─────────────────────────────────────────────────
+let chatHistory = [];
+
+function toggleChat() {
+  const panel = document.getElementById('chat-panel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) {
+    document.getElementById('chat-input').focus();
+  }
+}
+
+function addChatMsg(role, text) {
+  const el = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + role;
+  div.textContent = text;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  return div;
+}
+
+function buildContext() {
+  const wk = getWeekKey(weekOffset);
+  const m = getMandje(weekOffset);
+  const b1s = bStats(wk,[0,1,2]), b2s = bStats(wk,[3,4]);
+  const totMed = mandjeTotal(m.b1,true) + mandjeTotal(m.b2,true);
+  const totHun = (mandjeTotal(m.b1,false)-mandjeTotal(m.b1,true)) + (mandjeTotal(m.b2,false)-mandjeTotal(m.b2,true));
+  const totMandje = mandjeTotal(m.b1,false) + mandjeTotal(m.b2,false);
+  const b1Items = m.b1.map(i=>`${i.name}: €${i.prijs.toFixed(2)} (${i.cat})`).join(', ') || 'Leeg';
+  const b2Items = m.b2.map(i=>`${i.name}: €${i.prijs.toFixed(2)} (${i.cat})`).join(', ') || 'Leeg';
+  const persons = DB.users.map(u=>{ const c=countUser(u.name,wk,[0,1,2,3,4]); return `${u.name}: ${c.o}x ontbijt, ${c.l}x lunch`; }).join('
+');
+  return `Je bent een behulpzame assistent voor Hunter Recruitment. Je hebt toegang tot de backoffice data voor lunch & ontbijt maar je kunt ook gewoon algemene vragen beantwoorden.
+
+CONTEXT HUIDIGE WEEK (${getWeekLabel(weekOffset)}):
+- Best.1 (ma/di/wo): ${b1s.o} ontbijten, ${b1s.l} lunches | Mandje: ${b1Items}
+- Best.2 (do/vr): ${b2s.o} ontbijten, ${b2s.l} lunches | Mandje: ${b2Items}
+- Totaal mandje: €${totMandje.toFixed(2)} | Medewerkersdeel: €${totMed.toFixed(2)} | Hunter deel: €${totHun.toFixed(2)}
+- Medewerkers: ${persons}
+
+Antwoord altijd in het Nederlands. Wees bondig maar behulpzaam.`;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  const apiKey = getApiKey();
+  if (!apiKey) { addChatMsg('assistant', '⚠ Stel eerst je Claude API key in (rechtsboven).'); return; }
+  input.value = '';
+  addChatMsg('user', msg);
+  chatHistory.push({ role: 'user', content: msg });
+  const thinking = addChatMsg('assistant', '...');
+  thinking.classList.add('thinking');
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system: buildContext(),
+        messages: chatHistory
+      })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+    const reply = data.content?.[0]?.text || '...';
+    thinking.textContent = reply;
+    thinking.classList.remove('thinking');
+    chatHistory.push({ role: 'assistant', content: reply });
+    // Keep history manageable
+    if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+  } catch(e) {
+    thinking.textContent = '✕ Fout: ' + e.message;
+    thinking.classList.remove('thinking');
+    chatHistory.pop();
+  }
 }
 
 (async function init(){
