@@ -1068,8 +1068,7 @@ function buildContext() {
   const totMandje = mandjeTotal(m.b1,false) + mandjeTotal(m.b2,false);
   const b1Items = m.b1.map(i=>`${i.name}: €${i.prijs.toFixed(2)} (${i.cat})`).join(', ') || 'Leeg';
   const b2Items = m.b2.map(i=>`${i.name}: €${i.prijs.toFixed(2)} (${i.cat})`).join(', ') || 'Leeg';
-  const persons = DB.users.map(u=>{ const c=countUser(u.name,wk,[0,1,2,3,4]); return `${u.name}: ${c.o}x ontbijt, ${c.l}x lunch`; }).join('
-');
+  const persons = DB.users.map(u=>{ const c=countUser(u.name,wk,[0,1,2,3,4]); return `${u.name}: ${c.o}x ontbijt, ${c.l}x lunch`; }).join(' | ');
   return `Je bent een behulpzame assistent voor Hunter Recruitment. Je hebt toegang tot de backoffice data voor lunch & ontbijt maar je kunt ook gewoon algemene vragen beantwoorden.
 
 CONTEXT HUIDIGE WEEK (${getWeekLabel(weekOffset)}):
