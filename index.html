@@ -1069,15 +1069,70 @@ function buildContext() {
   const b1Items = m.b1.map(i=>`${i.name}: €${i.prijs.toFixed(2)} (${i.cat})`).join(', ') || 'Leeg';
   const b2Items = m.b2.map(i=>`${i.name}: €${i.prijs.toFixed(2)} (${i.cat})`).join(', ') || 'Leeg';
   const persons = DB.users.map(u=>{ const c=countUser(u.name,wk,[0,1,2,3,4]); return `${u.name}: ${c.o}x ontbijt, ${c.l}x lunch`; }).join(' | ');
-  return `Je bent een behulpzame assistent voor Hunter Recruitment. Je hebt toegang tot de backoffice data voor lunch & ontbijt maar je kunt ook gewoon algemene vragen beantwoorden.
+  // Per bestelling de pp kosten berekenen
+  const b1s_stats = bStats(wk,[0,1,2]), b2s_stats = bStats(wk,[3,4]);
+  function splitCosts(items, stats) {
+    let tO=0,tL=0;
+    items.forEach(i=>{if(i.cat==="Hunter")return;if(i.cat==="Ontbijt")tO+=i.prijs;else if(i.cat==="Lunch")tL+=i.prijs;else if(i.cat==="Beide"){tO+=i.prijs*0.3;tL+=i.prijs*0.7;}});
+    return {ppOnt:stats.o>0?tO/stats.o:0, ppLun:stats.l>0?tL/stats.l:0, totOnt:tO, totLun:tL};
+  }
+  const c1=splitCosts(m.b1, b1s_stats), c2=splitCosts(m.b2, b2s_stats);
+  const ppOntGem = ((c1.ppOnt||0)+(c2.ppOnt||0))/2;
+  const ppLunGem = ((c1.ppLun||0)+(c2.ppLun||0))/2;
 
-CONTEXT HUIDIGE WEEK (${getWeekLabel(weekOffset)}):
-- Best.1 (ma/di/wo): ${b1s.o} ontbijten, ${b1s.l} lunches | Mandje: ${b1Items}
-- Best.2 (do/vr): ${b2s.o} ontbijten, ${b2s.l} lunches | Mandje: ${b2Items}
-- Totaal mandje: €${totMandje.toFixed(2)} | Medewerkersdeel: €${totMed.toFixed(2)} | Hunter deel: €${totHun.toFixed(2)}
-- Medewerkers: ${persons}
+  // Budgetruimte berekenen
+  const maxOnt = DB.priceOnt, maxLun = DB.priceLun;
+  const ruimteOntB1 = b1s_stats.o > 0 ? Math.max(0, (maxOnt - c1.ppOnt) * b1s_stats.o) : 0;
+  const ruimteOntB2 = b2s_stats.o > 0 ? Math.max(0, (maxOnt - c2.ppOnt) * b2s_stats.o) : 0;
+  const ruimteLunB1 = b1s_stats.l > 0 ? Math.max(0, (maxLun - c1.ppLun) * b1s_stats.l) : 0;
+  const ruimteLunB2 = b2s_stats.l > 0 ? Math.max(0, (maxLun - c2.ppLun) * b2s_stats.l) : 0;
 
-Antwoord altijd in het Nederlands. Wees bondig maar behulpzaam.`;
+  // Per persoon details
+  const personDetails = DB.users.map(u=>{
+    const u1=countUser(u.name,wk,[0,1,2]), u2=countUser(u.name,wk,[3,4]);
+    const kO=u1.o*c1.ppOnt+u2.o*c2.ppOnt, kL=u1.l*c1.ppLun+u2.l*c2.ppLun;
+    return u.name+': '+( u1.o+u2.o)+'x ont, '+(u1.l+u2.l)+'x lunch = €'+(kO+kL).toFixed(2);
+  }).join(' | ');
+
+  return `Je bent de slimme backoffice assistent van Hunter Recruitment voor hun lunch & ontbijt systeem. Je hebt volledige toegang tot alle data en kunt berekeningen maken. Beantwoord vragen bondig en in het Nederlands. Je kunt ook gewoon algemene vragen beantwoorden.
+
+=== SYSTEEM UITLEG ===
+Hunter Recruitment verzorgt dagelijks ontbijt en lunch voor medewerkers op kantoor.
+- Medewerkers melden zich wekelijks aan via het portaal (per dag, per maaltijd)
+- Er zijn 2 bestellingen per week: Bestelling 1 op maandag (dekt ma/di/wo), Bestelling 2 op donderdag (dekt do/vr)
+- Boodschappen via Picnic. Kosten worden verdeeld over aangemelde medewerkers
+- Hunter betaalt eigen producten (melk, cola, chips, huishoud etc) — dit is het "Hunter deel"
+- Medewerkersdeel wordt maandelijks van salaris afgeschreven
+- Budget: max €${maxOnt.toFixed(2)} p.p. voor ontbijt, max €${maxLun.toFixed(2)} p.p. voor lunch per dag
+
+=== HUIDIGE WEEK: ${getWeekLabel(weekOffset)} ===
+
+BESTELLING 1 — Maandag (dekt ma/di/wo):
+- Aanmeldingen: ${b1s_stats.o} ontbijten, ${b1s_stats.l} lunches
+- Mandje totaal: €${mandjeTotal(m.b1,false).toFixed(2)} (medewerkers: €${mandjeTotal(m.b1,true).toFixed(2)}, Hunter: €${(mandjeTotal(m.b1,false)-mandjeTotal(m.b1,true)).toFixed(2)})
+- Werkelijke kosten: ontbijt €${c1.ppOnt.toFixed(2)} p.p., lunch €${c1.ppLun.toFixed(2)} p.p.
+- Budgetruimte over: ontbijt €${ruimteOntB1.toFixed(2)} totaal, lunch €${ruimteLunB1.toFixed(2)} totaal
+- Producten: ${b1Items}
+
+BESTELLING 2 — Donderdag (dekt do/vr):
+- Aanmeldingen: ${b2s_stats.o} ontbijten, ${b2s_stats.l} lunches
+- Mandje totaal: €${mandjeTotal(m.b2,false).toFixed(2)} (medewerkers: €${mandjeTotal(m.b2,true).toFixed(2)}, Hunter: €${(mandjeTotal(m.b2,false)-mandjeTotal(m.b2,true)).toFixed(2)})
+- Werkelijke kosten: ontbijt €${c2.ppOnt.toFixed(2)} p.p., lunch €${c2.ppLun.toFixed(2)} p.p.
+- Budgetruimte over: ontbijt €${ruimteOntB2.toFixed(2)} totaal, lunch €${ruimteLunB2.toFixed(2)} totaal
+- Producten: ${b2Items}
+
+WEEK TOTAAL:
+- Totaal mandje: €${totMandje.toFixed(2)}
+- Medewerkersdeel: €${totMed.toFixed(2)}
+- Hunter deel: €${totHun.toFixed(2)}
+- Gemiddelde kostprijs: ontbijt €${ppOntGem.toFixed(2)} p.p., lunch €${ppLunGem.toFixed(2)} p.p.
+
+PER MEDEWERKER DEZE WEEK:
+${personDetails}
+
+=== REKENHULP ===
+- Budgetruimte lunch bestelling 2: (€${maxLun.toFixed(2)} - €${c2.ppLun.toFixed(2)}) × ${b2s_stats.l} lunchers = €${ruimteLunB2.toFixed(2)}
+- Budgetruimte ontbijt bestelling 2: (€${maxOnt.toFixed(2)} - €${c2.ppOnt.toFixed(2)}) × ${b2s_stats.o} ontbijters = €${ruimteOntB2.toFixed(2)}`;
 }
 
 async function sendChat() {
