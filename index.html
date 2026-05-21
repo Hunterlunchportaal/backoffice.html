@@ -162,6 +162,9 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .hint { font-size: 0.75rem; color: var(--muted); margin-top: 6px; line-height: 1.6; }
 .empty-state { text-align: center; padding: 24px; color: var(--muted); font-size: 0.85rem; }
 /* CHAT */
+.reminder-banner { border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 14px; font-size: 0.87rem; display: flex; align-items: center; gap: 10px; }
+.reminder-warn { background: rgba(192,120,90,0.1); border: 1px solid rgba(192,120,90,0.25); color: var(--warn); }
+.reminder-ok { background: rgba(58,140,101,0.08); border: 1px solid rgba(58,140,101,0.2); color: var(--green); }
 .chat-panel { position: fixed; bottom: 0; right: 24px; width: 360px; max-height: 520px; background: white; border-radius: var(--radius) var(--radius) 0 0; box-shadow: 0 -4px 32px rgba(0,0,0,0.12); border: 1px solid var(--border); border-bottom: none; display: none; flex-direction: column; z-index: 200; }
 .chat-panel.open { display: flex; }
 .chat-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--stone); border-radius: var(--radius) var(--radius) 0 0; }
@@ -252,6 +255,9 @@ input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner
       <button class="tab" id="tab-maand" onclick="switchTab('maand',this)">Maand</button>
       <button class="tab" id="tab-instellingen" onclick="switchTab('instellingen',this)">Instellingen</button>
     </div>
+
+    <!-- REMINDER BANNER -->
+    <div id="reminder-banner"></div>
 
     <!-- WEEK -->
     <div id="sec-week" class="section active">
@@ -601,25 +607,71 @@ function switchInkoopTab(n, el) {
   document.getElementById("inkoop-b2").style.display = n===2?"block":"none";
 }
 
-function renderInkoop() {
+async function renderInkoop() {
   const wk = getWeekKey(weekOffset);
   document.getElementById("inkoop-lbl").textContent = getWeekLabel(weekOffset);
-  renderInkoopB("inkoop-b1", wk, [0,1,2]);
-  renderInkoopB("inkoop-b2", wk, [3,4]);
+  document.getElementById("inkoop-b1").innerHTML = '<div class="empty-state"><div class="spinner" style="margin:0 auto 8px"></div>Historische data laden...</div>';
+  document.getElementById("inkoop-b2").innerHTML = '<div class="empty-state"><div class="spinner" style="margin:0 auto 8px"></div>Historische data laden...</div>';
+  await renderInkoopB("inkoop-b1", wk, [0,1,2]);
+  await renderInkoopB("inkoop-b2", wk, [3,4]);
 }
 
-function renderInkoopB(elId, wk, idxs) {
+async function renderInkoopB(elId, wk, idxs) {
   const s = bStats(wk, idxs);
-  const p = Math.max(s.maxOnt||s.o, s.maxLun||s.l) || Math.max(
-    Math.max(...idxs.map(i => { let c=0; DB.users.forEach(u=>{ if(!isClosed(wk,i,"Ontbijt")&&!isAbsent(u.name,wk,DAYS[i],"Ontbijt"))c++; }); return c; })),
-    Math.max(...idxs.map(i => { let c=0; DB.users.forEach(u=>{ if(!isClosed(wk,i,"Lunch")&&!isAbsent(u.name,wk,DAYS[i],"Lunch"))c++; }); return c; }))
-  );
   const maxOnt = Math.max(...idxs.map(i => { let c=0; DB.users.forEach(u=>{ if(!isClosed(wk,i,"Ontbijt")&&!isAbsent(u.name,wk,DAYS[i],"Ontbijt"))c++; }); return c; }));
   const maxLun = Math.max(...idxs.map(i => { let c=0; DB.users.forEach(u=>{ if(!isClosed(wk,i,"Lunch")&&!isAbsent(u.name,wk,DAYS[i],"Lunch"))c++; }); return c; }));
   const sumOnt = s.o, sumLun = s.l;
+  const bestelling = idxs[0] === 0 ? 1 : 2;
+
+  // Laad historische mandjes
+  const histItems = await loadHistorischeMandjes();
+  const hist = berekenGemiddeldePerProduct(histItems, bestelling);
 
   if (maxOnt===0 && maxLun===0) { document.getElementById(elId).innerHTML='<div class="empty-state">Geen aanmeldingen voor deze periode.</div>'; return; }
 
+  // Als er historische data is, gebruik die — anders vaste formules
+  if (hist && hist.aantalWeken >= 1) {
+    const el = document.getElementById(elId);
+    const statsHtml = `<div class="stat-grid" style="margin-bottom:14px">
+      <div class="stat"><div class="stat-label">Max ontbijters/dag</div><div class="stat-val">${maxOnt}</div></div>
+      <div class="stat"><div class="stat-label">Max lunchers/dag</div><div class="stat-val">${maxLun}</div></div>
+      <div class="stat"><div class="stat-label">Totaal ontbijten</div><div class="stat-val">${sumOnt}</div></div>
+      <div class="stat"><div class="stat-label">Totaal lunches</div><div class="stat-val">${sumLun}</div></div>
+    </div>
+    <div class="tip" style="margin-bottom:14px">Gebaseerd op gemiddelden van de laatste <strong>${hist.aantalWeken} week${hist.aantalWeken > 1 ? 'en' : ''}</strong>.</div>`;
+
+    // Schaal historische producten naar huidig aantal personen
+    // Gebruik het gemiddeld aantal personen uit de history als referentie
+    const histItems2 = histItems.filter(i => i.bestelling === bestelling);
+    const histWeken = [...new Set(histItems2.map(i => i.week_key))];
+    // Bereken gemiddeld aantal personen per week uit de aanmeldingen
+    const refPersonen = Math.max(maxOnt, maxLun) || 10;
+
+    // Groepeer producten per categorie
+    const catMap = { 'Ontbijt': [], 'Lunch': [], 'Beide': [], 'Hunter': [] };
+    Object.entries(hist.productData).forEach(([naam, data]) => {
+      const cat = data.cat || 'Ontbijt';
+      const gemPrijs = data.totaal / data.count;
+      if (catMap[cat] !== undefined) catMap[cat].push({ naam, gemPrijs, aantalWeken: data.count });
+    });
+
+    const catLabels = { 'Ontbijt': 'Ontbijt', 'Lunch': 'Lunch', 'Beide': 'Beide (ontbijt & lunch)', 'Hunter': 'Hunter (eigen kosten)' };
+    let itemsHtml = Object.entries(catMap).filter(([,items]) => items.length > 0).map(([cat, items]) => `
+      <div class="inkoop-section">
+        <div class="inkoop-section-title">${catLabels[cat]}</div>
+        <div class="inkoop-grid">
+          ${items.map(i => `<div class="inkoop-item">
+            <span class="inkoop-name">${i.naam}<br><span class="inkoop-note">gem. €${i.gemPrijs.toFixed(2)} / ${i.aantalWeken > 1 ? i.aantalWeken+'w gem' : 'vorige week'}</span></span>
+            <span class="inkoop-qty">€${i.gemPrijs.toFixed(2)}</span>
+          </div>`).join('')}
+        </div>
+      </div>`).join('');
+
+    el.innerHTML = statsHtml + itemsHtml;
+    return;
+  }
+
+  // Geen historische data — gebruik vaste formules als fallback
   const broodOnt = Math.ceil(maxOnt*3/12);
   const broodLun = Math.ceil(maxLun*3/12);
   const v = sumOnt + sumLun;
@@ -1033,9 +1085,111 @@ async function loadAll() {
 
 async function startApp() {
   showLoading("Data ophalen...");
-  try{await loadAll();updateApiStatus();renderWeek();}
-  catch(e){alert("Kon data niet laden: "+e.message);}
+  try {
+    await loadAll();
+    updateApiStatus();
+    renderWeek();
+    // Load mandje for current week so reminder can check it
+    await loadMandjeFromDB();
+    checkReminders();
+  } catch(e) { alert("Kon data niet laden: "+e.message); }
   hideLoading();
+}
+
+// ── REMINDER BANNER ──────────────────────────────────────
+async function checkReminders() {
+  const el = document.getElementById('reminder-banner');
+  if (!el) return;
+  const now = new Date();
+  const day = now.getDay(); // 0=sun,1=mon,2=tue,3=wed,4=thu,5=fri,6=sat
+  const wk = getWeekKey(0);
+  const msgs = [];
+
+  // Check bestelling 1 (ma t/m wo) — relevant van ma t/m wo
+  if (day >= 1 && day <= 3) {
+    const m = getMandje(0);
+    const b1empty = m.b1.filter(i => i.name && i.prijs > 0).length === 0;
+    if (b1empty) {
+      msgs.push('⚠ Bestelling 1 (ma/di/wo) is nog niet ingevuld voor deze week.');
+    }
+  }
+
+  // Check bestelling 2 (do/vr) — relevant van do t/m vr
+  if (day >= 4 && day <= 5) {
+    const m = getMandje(0);
+    const b2empty = m.b2.filter(i => i.name && i.prijs > 0).length === 0;
+    if (b2empty) {
+      msgs.push('⚠ Bestelling 2 (do/vr) is nog niet ingevuld voor deze week.');
+    }
+  }
+
+  // Also check: b1 ingevuld maar b2 nog niet terwijl het do of vr is
+  if (day >= 4) {
+    const m = getMandje(0);
+    const b1ok = m.b1.filter(i => i.name && i.prijs > 0).length > 0;
+    const b2empty = m.b2.filter(i => i.name && i.prijs > 0).length === 0;
+    if (b1ok && b2empty && !msgs.length) {
+      msgs.push('⚠ Bestelling 2 (do/vr) is nog niet ingevuld — bestelling 1 staat al klaar.');
+    }
+  }
+
+  if (msgs.length > 0) {
+    el.innerHTML = msgs.map(m =>
+      `<div class="reminder-banner reminder-warn">
+        ${m}
+        <button onclick="switchTab('mandje',document.getElementById('tab-mandje'))" 
+          style="margin-left:auto;padding:5px 12px;border-radius:8px;border:1px solid rgba(192,120,90,0.3);background:transparent;color:var(--warn);font-family:var(--font);font-size:0.8rem;cursor:pointer;white-space:nowrap">
+          Naar mandje →
+        </button>
+      </div>`
+    ).join('');
+  } else if (day >= 1 && day <= 5) {
+    const m = getMandje(0);
+    const b1ok = m.b1.filter(i => i.name && i.prijs > 0).length > 0;
+    const b2ok = m.b2.filter(i => i.name && i.prijs > 0).length > 0;
+    if (b1ok || b2ok) {
+      el.innerHTML = `<div class="reminder-banner reminder-ok">✓ Mandje${b1ok && b2ok ? 's' : ''} ${b1ok && b2ok ? 'beide' : b1ok ? 'bestelling 1' : 'bestelling 2'} ingevuld voor deze week.</div>`;
+      setTimeout(() => { el.innerHTML = ''; }, 4000);
+    }
+  }
+}
+
+// ── INKOOPTOOL OP BASIS VAN HISTORISCHE MANDJES ───────────
+async function loadHistorischeMandjes() {
+  // Laad de laatste 6 weken aan mandjes
+  try {
+    const items = await sb('/mandje_items?select=week_key,bestelling,naam,prijs,categorie&order=week_key.desc&limit=200');
+    return items;
+  } catch(e) { return []; }
+}
+
+function berekenGemiddeldePerProduct(items, bestelling) {
+  // Groepeer per week
+  const perWeek = {};
+  items.filter(i => i.bestelling === bestelling).forEach(i => {
+    if (!perWeek[i.week_key]) perWeek[i.week_key] = {};
+    perWeek[i.week_key][i.naam] = parseFloat(i.prijs) || 0;
+  });
+  const weken = Object.keys(perWeek);
+  if (weken.length === 0) return null;
+
+  // Bereken gemiddelde prijs per product over alle weken
+  const productData = {};
+  weken.forEach(wk => {
+    Object.entries(perWeek[wk]).forEach(([naam, prijs]) => {
+      if (!productData[naam]) productData[naam] = { totaal: 0, count: 0, cat: '' };
+      productData[naam].totaal += prijs;
+      productData[naam].count += 1;
+    });
+  });
+
+  // Voeg categorie toe uit huidige mandjes
+  const huidigItems = items.filter(i => i.bestelling === bestelling);
+  huidigItems.forEach(i => {
+    if (productData[i.naam]) productData[i.naam].cat = i.categorie;
+  });
+
+  return { productData, aantalWeken: weken.length };
 }
 
 // ── CHAT ─────────────────────────────────────────────────
