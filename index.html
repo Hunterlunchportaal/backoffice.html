@@ -84,9 +84,9 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .badge-same { background: var(--stone); color: var(--muted); }
 
 /* MANDJE */
-.mandje-header-row { display: grid; grid-template-columns: 1fr 90px 110px 55px auto; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.mandje-header-row { display: grid; grid-template-columns: 1fr 80px 70px 100px 55px auto; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
 .mandje-header-row span { font-size: 0.7rem; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.mandje-row { display: grid; grid-template-columns: 1fr 90px 110px 55px auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+.mandje-row { display: grid; grid-template-columns: 1fr 80px 70px 100px 55px auto; gap: 6px; align-items: center; margin-bottom: 6px; }
 .mandje-row input, .mandje-row select { padding: 7px 9px; border-radius: 7px; border: 1px solid var(--border); background: rgba(255,255,255,0.9); font-family: var(--font); font-size: 0.83rem; color: var(--text); outline: none; width: 100%; transition: border-color 0.15s; }
 .mandje-row input:focus, .mandje-row select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(74,127,165,0.1); }
 .diff-badge { font-size: 0.68rem; padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
@@ -336,7 +336,7 @@ input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner
           <span class="badge badge-blue" id="b1-badge">€0,00</span>
         </div>
         <div class="mandje-header-row">
-          <span>Product</span><span>Prijs (€)</span><span>Categorie</span><span>Vorig</span><span></span>
+          <span>Product</span><span>Prijs (€)</span><span>Aantal</span><span>Categorie</span><span>Vorig</span><span></span>
         </div>
         <div id="b1-items"></div>
         <div class="btn-row">
@@ -357,7 +357,7 @@ input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner
           <span class="badge badge-blue" id="b2-badge">€0,00</span>
         </div>
         <div class="mandje-header-row">
-          <span>Product</span><span>Prijs (€)</span><span>Categorie</span><span>Vorig</span><span></span>
+          <span>Product</span><span>Prijs (€)</span><span>Aantal</span><span>Categorie</span><span>Vorig</span><span></span>
         </div>
         <div id="b2-items"></div>
         <div class="btn-row">
@@ -638,7 +638,7 @@ async function renderInkoopB(elId, wk, idxs) {
       <div class="stat"><div class="stat-label">Totaal ontbijten</div><div class="stat-val">${sumOnt}</div></div>
       <div class="stat"><div class="stat-label">Totaal lunches</div><div class="stat-val">${sumLun}</div></div>
     </div>
-    <div class="tip" style="margin-bottom:14px">Gebaseerd op gemiddelden van de laatste <strong>${hist.aantalWeken} week${hist.aantalWeken > 1 ? 'en' : ''}</strong>.</div>`;
+    <div class="tip" style="margin-bottom:14px">Gebaseerd op gemiddelden van de laatste <strong>${hist.aantalWeken} ${hist.aantalWeken > 1 ? 'weken' : 'week'}</strong>.</div>`;
 
     // Schaal historische producten naar huidig aantal personen
     // Gebruik het gemiddeld aantal personen uit de history als referentie
@@ -658,7 +658,8 @@ async function renderInkoopB(elId, wk, idxs) {
     Object.entries(hist.productData).forEach(([naam, data]) => {
       const cat = data.cat || 'Ontbijt';
       const gemPrijs = data.totaal / data.count;
-      if (catMap[cat] !== undefined) catMap[cat].push({ naam, gemPrijs, aantalWeken: data.count });
+      const gemAantal = data.gemAantal || 0;
+      if (catMap[cat] !== undefined) catMap[cat].push({ naam, gemPrijs, gemAantal, aantalWeken: data.count });
     });
 
     const catLabels = { 'Ontbijt': 'Ontbijt', 'Lunch': 'Lunch', 'Beide': 'Beide (ontbijt & lunch)', 'Hunter': 'Hunter (eigen kosten)' };
@@ -667,13 +668,11 @@ async function renderInkoopB(elId, wk, idxs) {
         <div class="inkoop-section-title">${catLabels[cat]}</div>
         <div class="inkoop-grid">
           ${items.map(i => {
-            // Schat hoeveelheid op basis van prijs en pp kosten
-            // Gemiddelde stuksprijs uit vorige mandjes is i.gemPrijs (totaalprijs per bestelling)
-            // We tonen gewoon de totaalprijs want hoeveelheid zit al in de prijs
             const trend = i.aantalWeken >= 2 ? ` · ${i.aantalWeken}w gem` : ' · vorige week';
+            const aantalTxt = i.gemAantal > 0 ? `${i.gemAantal} st. · ` : '';
             return `<div class="inkoop-item">
-              <span class="inkoop-name">${i.naam}<br><span class="inkoop-note">€${i.gemPrijs.toFixed(2)} totaal${trend}</span></span>
-              <span class="inkoop-qty">€${i.gemPrijs.toFixed(2)}</span>
+              <span class="inkoop-name">${i.naam}<br><span class="inkoop-note">${aantalTxt}€${i.gemPrijs.toFixed(2)}${trend}</span></span>
+              <span class="inkoop-qty">${i.gemAantal > 0 ? i.gemAantal+' st.' : '€'+i.gemPrijs.toFixed(2)}</span>
             </div>`;
           }).join('')}
         </div>
@@ -783,15 +782,15 @@ async function renderInkoopB(elId, wk, idxs) {
 // ── MANDJE ────────────────────────────────────────────────
 function getMandje(off) { const wk=getWeekKey(off); if(!mandjeCache[wk])mandjeCache[wk]={b1:[],b2:[]}; return mandjeCache[wk]; }
 function getPrevPrice(off,b,name) { const prev=(mandjeCache[getWeekKey(off-1)]||{b1:[],b2:[]})[b===1?"b1":"b2"]||[]; const f=prev.find(i=>i.name===name); return f?f.prijs:null; }
-function addItem(b) { getMandje(weekOffset)[b===1?"b1":"b2"].push({name:"",prijs:0,cat:"Ontbijt"}); renderMandjeItems(); clearTimeout(autoSaveTimer);autoSaveTimer=setTimeout(()=>autoSaveMandje(),2000); }
+function addItem(b) { getMandje(weekOffset)[b===1?"b1":"b2"].push({name:"",prijs:0,aantal:0,cat:"Ontbijt"}); renderMandjeItems(); clearTimeout(autoSaveTimer);autoSaveTimer=setTimeout(()=>autoSaveMandje(),2000); }
 function addHunterDefaults(b) { const a=getMandje(weekOffset)[b===1?"b1":"b2"]; HUNTER_DEFAULTS.forEach(n=>{if(!a.find(i=>i.name===n))a.push({name:n,prijs:0,cat:"Hunter"});}); renderMandjeItems(); }
-function loadVasteProducten(b) { const a=getMandje(weekOffset)[b===1?"b1":"b2"]; vasteProducten.filter(p=>p.bestelling===b||p.bestelling===0).forEach(p=>{if(!a.find(i=>i.name===p.naam))a.push({name:p.naam,prijs:0,cat:p.categorie});}); renderMandjeItems(); }
+function loadVasteProducten(b) { const a=getMandje(weekOffset)[b===1?"b1":"b2"]; vasteProducten.filter(p=>p.bestelling===b||p.bestelling===0).forEach(p=>{if(!a.find(i=>i.name===p.naam))a.push({name:p.naam,prijs:0,aantal:0,cat:p.categorie});}); renderMandjeItems(); }
 function removeItem(b,idx) { getMandje(weekOffset)[b===1?"b1":"b2"].splice(idx,1); renderMandjeItems(); clearTimeout(autoSaveTimer);autoSaveTimer=setTimeout(()=>autoSaveMandje(),2000); }
 
 let autoSaveTimer=null;
 function updateItem(b,idx,field,val) {
   const a=getMandje(weekOffset)[b===1?"b1":"b2"];
-  a[idx][field]=field==="prijs"?(parseFloat(val)||0):val;
+  a[idx][field]=field==="prijs"?(parseFloat(val)||0):field==="aantal"?(parseInt(val)||0):val;
   if(field==="cat"&&a[idx].name) saveCatVoorkeur(a[idx].name,val);
   updateTotals(b);
   // Auto-save na 2 seconden stilte
@@ -801,8 +800,8 @@ function updateItem(b,idx,field,val) {
 
 async function autoSaveMandje() {
   const wk=getWeekKey(weekOffset),m=getMandje(weekOffset);
-  const all=[...m.b1.filter(i=>i.name).map(i=>({week_key:wk,bestelling:1,naam:i.name,prijs:i.prijs,categorie:i.cat})),
-             ...m.b2.filter(i=>i.name).map(i=>({week_key:wk,bestelling:2,naam:i.name,prijs:i.prijs,categorie:i.cat}))];
+  const all=[...m.b1.filter(i=>i.name).map(i=>({week_key:wk,bestelling:1,naam:i.name,prijs:i.prijs,aantal:i.aantal||0,categorie:i.cat})),
+             ...m.b2.filter(i=>i.name).map(i=>({week_key:wk,bestelling:2,naam:i.name,prijs:i.prijs,aantal:i.aantal||0,categorie:i.cat}))];
   try {
     await sb(`/mandje_items?week_key=eq.${wk}`,{method:"DELETE",prefer:"return=minimal",headers:{"Prefer":"return=minimal"}});
     if(all.length>0) await sb("/mandje_items",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(all)});
@@ -848,6 +847,7 @@ function renderMandjeItems() {
       return `<div class="mandje-row">
         <input type="text" value="${item.name.replace(/"/g,'&quot;')}" placeholder="Product..." oninput="updateItem(${b},${i},'name',this.value)">
         <input type="number" step="0.01" min="0" value="${item.prijs||''}" placeholder="0.00" oninput="updateItem(${b},${i},'prijs',this.value)">
+        <input type="number" step="1" min="0" value="${item.aantal||''}" placeholder="st." oninput="updateItem(${b},${i},'aantal',this.value)" title="Aantal stuks/pakken">
         <select onchange="updateItem(${b},${i},'cat',this.value)">
           <option value="Ontbijt" ${item.cat==="Ontbijt"?"selected":""}>🌅 Ontbijt</option>
           <option value="Lunch" ${item.cat==="Lunch"?"selected":""}>🥗 Lunch</option>
@@ -877,8 +877,8 @@ async function saveMandjeAndCalc() {
   showLoading("Mandje opslaan...");
   try {
     await sb(`/mandje_items?week_key=eq.${wk}`,{method:"DELETE",prefer:"return=minimal",headers:{"Prefer":"return=minimal"}});
-    const all=[...m.b1.filter(i=>i.name).map(i=>({week_key:wk,bestelling:1,naam:i.name,prijs:i.prijs,categorie:i.cat})),
-               ...m.b2.filter(i=>i.name).map(i=>({week_key:wk,bestelling:2,naam:i.name,prijs:i.prijs,categorie:i.cat}))];
+    const all=[...m.b1.filter(i=>i.name).map(i=>({week_key:wk,bestelling:1,naam:i.name,prijs:i.prijs,aantal:i.aantal||0,categorie:i.cat})),
+               ...m.b2.filter(i=>i.name).map(i=>({week_key:wk,bestelling:2,naam:i.name,prijs:i.prijs,aantal:i.aantal||0,categorie:i.cat}))];
     if(all.length>0) await sb("/mandje_items",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(all)});
     hideLoading(); renderVerrekening(); switchTab('verrekening',document.getElementById('tab-verrekening'));
   } catch(e){hideLoading();alert("Fout bij opslaan: "+e.message);}
@@ -891,8 +891,8 @@ async function loadMandjeFromDB() {
       sb(`/mandje_items?week_key=eq.${wk}&select=bestelling,naam,prijs,categorie`),
       sb(`/mandje_items?week_key=eq.${prevWk}&select=bestelling,naam,prijs,categorie`)
     ]);
-    if(items.length>0) mandjeCache[wk]={b1:items.filter(i=>i.bestelling===1).map(i=>({name:i.naam,prijs:parseFloat(i.prijs),cat:i.categorie})),b2:items.filter(i=>i.bestelling===2).map(i=>({name:i.naam,prijs:parseFloat(i.prijs),cat:i.categorie}))};
-    if(prev.length>0) mandjeCache[prevWk]={b1:prev.filter(i=>i.bestelling===1).map(i=>({name:i.naam,prijs:parseFloat(i.prijs),cat:i.categorie})),b2:prev.filter(i=>i.bestelling===2).map(i=>({name:i.naam,prijs:parseFloat(i.prijs),cat:i.categorie}))};
+    if(items.length>0) mandjeCache[wk]={b1:items.filter(i=>i.bestelling===1).map(i=>({name:i.naam,prijs:parseFloat(i.prijs),aantal:parseInt(i.aantal)||0,cat:i.categorie})),b2:items.filter(i=>i.bestelling===2).map(i=>({name:i.naam,prijs:parseFloat(i.prijs),aantal:parseInt(i.aantal)||0,cat:i.categorie}))};
+    if(prev.length>0) mandjeCache[prevWk]={b1:prev.filter(i=>i.bestelling===1).map(i=>({name:i.naam,prijs:parseFloat(i.prijs),aantal:parseInt(i.naam)||0,cat:i.categorie})),b2:prev.filter(i=>i.bestelling===2).map(i=>({name:i.naam,prijs:parseFloat(i.prijs),aantal:parseInt(i.aantal)||0,cat:i.categorie}))};
   } catch(e){console.warn("Mandje laden:",e.message);}
 }
 
@@ -1075,7 +1075,7 @@ Geef ALLEEN de JSON array terug, geen tekst of uitleg eromheen. Begin direct met
         const cat=voorkeur||(item.categorie||"Ontbijt");
         const existing=arr.find(i=>i.name===item.naam);
         if(existing){existing.prijs=parseFloat(item.prijs)||0;existing.cat=cat;}
-        else{arr.push({name:item.naam,prijs:parseFloat(item.prijs)||0,cat:cat});added++;}
+        else{arr.push({name:item.naam,prijs:parseFloat(item.prijs)||0,aantal:parseInt(item.aantal)||0,cat:cat});added++;}
       }
     });
     renderMandjeItems();
@@ -1203,25 +1203,30 @@ function berekenGemiddeldePerProduct(items, bestelling) {
   const perWeek = {};
   items.filter(i => i.bestelling === bestelling).forEach(i => {
     if (!perWeek[i.week_key]) perWeek[i.week_key] = {};
-    perWeek[i.week_key][i.naam] = parseFloat(i.prijs) || 0;
+    perWeek[i.week_key][i.naam] = { prijs: parseFloat(i.prijs)||0, aantal: parseInt(i.aantal)||0 };
   });
   const weken = Object.keys(perWeek);
   if (weken.length === 0) return null;
 
-  // Bereken gemiddelde prijs per product over alle weken
+  // Bereken gemiddelde prijs en aantal per product over alle weken
   const productData = {};
   weken.forEach(wk => {
-    Object.entries(perWeek[wk]).forEach(([naam, prijs]) => {
-      if (!productData[naam]) productData[naam] = { totaal: 0, count: 0, cat: '' };
-      productData[naam].totaal += prijs;
+    Object.entries(perWeek[wk]).forEach(([naam, data]) => {
+      if (!productData[naam]) productData[naam] = { totaal: 0, totaalAantal: 0, count: 0, cat: '' };
+      productData[naam].totaal += data.prijs || data;
+      productData[naam].totaalAantal += data.aantal || 0;
       productData[naam].count += 1;
     });
   });
 
-  // Voeg categorie toe uit huidige mandjes
+  // Voeg categorie en gemAantal toe
   const huidigItems = items.filter(i => i.bestelling === bestelling);
   huidigItems.forEach(i => {
     if (productData[i.naam]) productData[i.naam].cat = i.categorie;
+  });
+  // Bereken gemiddeld aantal
+  Object.values(productData).forEach(d => {
+    d.gemAantal = d.totaalAantal > 0 ? Math.round(d.totaalAantal / d.count) : 0;
   });
 
   return { productData, aantalWeken: weken.length };
