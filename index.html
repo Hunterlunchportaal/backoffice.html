@@ -647,7 +647,13 @@ async function renderInkoopB(elId, wk, idxs) {
     // Bereken gemiddeld aantal personen per week uit de aanmeldingen
     const refPersonen = Math.max(maxOnt, maxLun) || 10;
 
-    // Groepeer producten per categorie
+    // Bereken ook gemiddeld aantal personen per week uit aanmeldingen
+    // zodat we kunnen schalen naar huidig aantal personen
+    const histWeken2 = [...new Set(histItems.filter(i=>i.bestelling===bestelling).map(i=>i.week_key))];
+    // Gemiddeld max personen uit stats van die weken (gebruik huidig als referentie)
+    const huidigMax = Math.max(maxOnt, maxLun) || 1;
+
+    // Groepeer producten per categorie — inclusief hoeveelheid schatten
     const catMap = { 'Ontbijt': [], 'Lunch': [], 'Beide': [], 'Hunter': [] };
     Object.entries(hist.productData).forEach(([naam, data]) => {
       const cat = data.cat || 'Ontbijt';
@@ -656,16 +662,45 @@ async function renderInkoopB(elId, wk, idxs) {
     });
 
     const catLabels = { 'Ontbijt': 'Ontbijt', 'Lunch': 'Lunch', 'Beide': 'Beide (ontbijt & lunch)', 'Hunter': 'Hunter (eigen kosten)' };
-    let itemsHtml = Object.entries(catMap).filter(([,items]) => items.length > 0).map(([cat, items]) => `
+    let itemsHtml = Object.entries(catMap).filter(([cat, items]) => items.length > 0 && cat !== 'Hunter').map(([cat, items]) => `
       <div class="inkoop-section">
         <div class="inkoop-section-title">${catLabels[cat]}</div>
         <div class="inkoop-grid">
-          ${items.map(i => `<div class="inkoop-item">
-            <span class="inkoop-name">${i.naam}<br><span class="inkoop-note">gem. €${i.gemPrijs.toFixed(2)} / ${i.aantalWeken > 1 ? i.aantalWeken+'w gem' : 'vorige week'}</span></span>
+          ${items.map(i => {
+            // Schat hoeveelheid op basis van prijs en pp kosten
+            // Gemiddelde stuksprijs uit vorige mandjes is i.gemPrijs (totaalprijs per bestelling)
+            // We tonen gewoon de totaalprijs want hoeveelheid zit al in de prijs
+            const trend = i.aantalWeken >= 2 ? ` · ${i.aantalWeken}w gem` : ' · vorige week';
+            return `<div class="inkoop-item">
+              <span class="inkoop-name">${i.naam}<br><span class="inkoop-note">€${i.gemPrijs.toFixed(2)} totaal${trend}</span></span>
+              <span class="inkoop-qty">€${i.gemPrijs.toFixed(2)}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`).join('');
+
+    // Hunter apart onderaan
+    const hunterItems = catMap['Hunter'];
+    if (hunterItems.length > 0) {
+      itemsHtml += `<div class="inkoop-section">
+        <div class="inkoop-section-title">Hunter (eigen kosten)</div>
+        <div class="inkoop-grid">
+          ${hunterItems.map(i => `<div class="inkoop-item" style="opacity:0.7">
+            <span class="inkoop-name">${i.naam}<br><span class="inkoop-note">gem. €${i.gemPrijs.toFixed(2)}</span></span>
             <span class="inkoop-qty">€${i.gemPrijs.toFixed(2)}</span>
           </div>`).join('')}
         </div>
-      </div>`).join('');
+      </div>`;
+    }
+
+    // Voeg totaaloverzicht toe
+    const totMedHist = [...catMap['Ontbijt'], ...catMap['Lunch'], ...catMap['Beide']].reduce((s,i)=>s+i.gemPrijs,0);
+    const totHunHist = catMap['Hunter'].reduce((s,i)=>s+i.gemPrijs,0);
+    itemsHtml += `<div class="totaal-row" style="margin-top:8px">
+      <span>Verwacht medewerkersdeel</span><span>±€${totMedHist.toFixed(2)}</span>
+    </div>
+    <div class="info-row"><span>Verwacht Hunter deel</span><span>±€${totHunHist.toFixed(2)}</span></div>
+    <div class="info-row"><span>Verwacht totaal mandje</span><span>±€${(totMedHist+totHunHist).toFixed(2)}</span></div>`;
 
     el.innerHTML = statsHtml + itemsHtml;
     return;
